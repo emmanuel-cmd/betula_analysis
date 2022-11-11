@@ -1,1 +1,1 @@
-# This repository contains relevant files for the allergenicity  of Betula in Augsburg
+# This repository contains relevant files to map the allergenicity of **Betula pendula** in Augsburg
