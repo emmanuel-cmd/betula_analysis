@@ -45,6 +45,16 @@ ndvirasterstack_L8 <- ndvirasterstack_L8[[order(sortedind)]]
 # Append dates Z values
 ndvirasterstack_L8_dated <- setZ(ndvirasterstack_L8, as.POSIXct(sortedind), "Date")
 
+# Load augsburg shape file
+# Load a shapefile of augsburg
+augsburg <- readOGR("shapefiles/augsburg/", "augsburg_boundary")
+#proj4string(augsburg) <- "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
+ndvirasterstack_L7_dated <- projectRaster(ndvirasterstack_L7_dated, crs = proj4string(augsburg))
 
+plot(ndvirasterstack_L7_dated[[3]])
+plot(augsburg, add =T)
 
-PhenologyRaster(ndvirasterstack_L7_dated, freq = 1)
+extent(augsburg)
+# 
+
+ndvirasterstack_L7_dated <- crop(ndvirasterstack_L7_dated, extent(augsburg))
