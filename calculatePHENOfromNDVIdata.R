@@ -49,7 +49,7 @@ ndvirasterstack_L8_dated <- setZ(ndvirasterstack_L8, as.POSIXct(sortedind), "Dat
 # Load a shapefile of augsburg
 augsburg <- readOGR("shapefiles/augsburg/", "augsburg_boundary")
 #proj4string(augsburg) <- "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs"
-ndvirasterstack_L7_dated <- projectRaster(ndvirasterstack_L7_dated, crs = proj4string(augsburg))
+ndvirasterstack_L7_dated_1 <- projectRaster(ndvirasterstack_L7_dated[[1]], crs = proj4string(augsburg))
 
 plot(ndvirasterstack_L7_dated[[3]])
 plot(augsburg, add =T)
@@ -57,4 +57,6 @@ plot(augsburg, add =T)
 extent(augsburg)
 # 
 
-ndvirasterstack_L7_dated <- crop(ndvirasterstack_L7_dated, extent(augsburg))
+ndvirasterstack_L7_dated_1_mskd <- raster::mask(ndvirasterstack_L7_dated_1, augsburg)
+
+plot(ndvirasterstack_L7_dated_1_mskd)
