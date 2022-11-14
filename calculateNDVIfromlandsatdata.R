@@ -12,6 +12,7 @@ library(maptools)
 library(tidyverse)
 library(caret)
 library(leaps)
+library(greenbrown)
 
 # Load files
 betdata <- read.xlsx("betuladata/betula data 2013-2018.xlsx", sheetIndex = 1)
@@ -79,10 +80,23 @@ for (i in list.files("L8")){
   show(i)
 }
 
-library()
-
+# Stack raster together 
 rastlist <- list.files(path = "ndvioutputs", pattern='.tif$', all.files=TRUE, full.names=T)
 allrasters <- lapply(rastlist, raster)
 crop_allrasters <-lapply(allrasters, FUN = resample, y=allrasters[[1]])
 
-ndvil7<- do.call("stack", crop_allrasters)
+# L8
+rastlistl8 <- list.files(path = "ndvioutputs/L8/", pattern='.tif$', all.files=TRUE, full.names=T)
+allrastersl8 <- lapply(rastlistl8, raster)
+crop_allrastersl8 <-lapply(allrastersl8, FUN = resample, y=allrastersl8[[1]])
+
+# --
+ndvil7 <- do.call("stack", crop_allrasters)
+plot(ndvil7[[1]])
+
+# --
+ndvil8 <- do.call("stack", crop_allrastersl8)
+plot(ndvil8[[1]])
+
+saveRDS(ndvil7, "ndvirasterstack_L7.rds")
+saveRDS(ndvil8, "ndvirasterstack_L8.rds")
