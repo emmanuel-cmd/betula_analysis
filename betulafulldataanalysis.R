@@ -1,5 +1,6 @@
 library(xlsx)
 library(mapview)
+library(rgdal)
 
 # Load data
 allbirch <- read.xlsx("betuladata/Birkenkartierung.xlsx", sheetIndex = 1)
