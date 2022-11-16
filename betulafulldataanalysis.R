@@ -1,5 +1,6 @@
 library(xlsx)
 library(mapview)
+library(rgdal)
 
 # Load data
 allbirch <- read.xlsx("betuladata/Birkenkartierung.xlsx", sheetIndex = 1)
@@ -44,7 +45,7 @@ birchdatsp <- SpatialPoints(birchdat[,c("Longitude", "Latitude")], proj4string=C
 ns <- sp::over(birchdatsp, augsburg)
 birchdatspaug  <- birchdatsp[!is.na(ns$full_id), ]
 
-# 
+#
 plot(augsburg)
 plot(birchdatspaug, add =T)
 
