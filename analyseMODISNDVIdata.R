@@ -2,38 +2,77 @@ library(raster)
 library(sp)
 library(sf)
 library(rgdal)
+library(greenbrown)
+library(xlsx)
+library(sp)
+library(sf)
+library(rgdal)
+library(raster)
+library(dplyr)
+library(magrittr)
+library(gstat)
+library(tmap)
+library(spatstat)
+library(maptools)
+library(tidyverse)
+library(caret)
+library(leaps)
+library(tidyr)
+library(ellipse)
 
-# Load augsburg boundary layer
+# 1. Load augsburg boundary layer
 augsburg <- readOGR("shapefiles/augsburg/", "augsburg_boundary")
 
-# Load raster layers
-rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/", pattern='.tif$', all.files=TRUE, full.names=T)))
-rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/NDVI", pattern='.tif$', all.files=TRUE, full.names=T)))
-
-# Stack raster together
-allrastersmod <- stack(rasmod1, rasmod2)
-
-# Extract names
-years <- do.call("rbind", strsplit(names(allrastersmod), "_", fixed = T))[,c(3:4)] %>% as.data.frame()
-nameyears <- paste(years$V1, years$V2, sep="_")
-
-# Append names to all raster layers
-names(allrastersmod) <- nameyears
-
-# Sort rasters based on newly created names
-allrastersort <- allrastersmod[[order(nameyears)]]
-
-# Transform augsburg boundary
+## Transform augsburg boundary
 aug <- spTransform(augsburg, "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
 plot(aug)
 
-# Crop to augsburg boundary
+# 2. BETULA DATA - Load files
+betdata <- read.xlsx("betuladata/betula data 2013-2018.xlsx", sheetIndex = 1)
+
+## Rename columns
+names(betdata) <- gsub(".","_", names(betdata), fixed=T)
+
+## Convert relevant columns to numeric
+betdata$X <- as.numeric(betdata$X)
+betdata$Y <- as.numeric(betdata$Y)
+betdata$Flowering_duration <- as.numeric(betdata$Flowering_duration)
+
+## Get location of betula trees in augsburg
+betloc <- betdata[, c("X", "Y")]
+
+## Convert betdata to spatial points dataframe and transform
+betdatasp <- SpatialPointsDataFrame(betdata[,c("UTM_X", "UTM_Y")], data = betdata, proj4string = CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"))
+betdatasp <- spTransform(betdatasp, CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"))
+
+# Get only locations within augsburg
+sub <- sp::over(betdatasp, aug)
+betdataspaug <- betdatasp[!is.na(sub$full_id), ]
+
+# 3. Load raster layers
+rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/", pattern='.tif$', all.files=TRUE, full.names=T)))
+rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/NDVI", pattern='.tif$', all.files=TRUE, full.names=T)))
+
+## Stack raster together
+allrastersmod <- stack(rasmod1, rasmod2)
+
+## Extract names
+years <- do.call("rbind", strsplit(names(allrastersmod), "_", fixed = T))[,c(3:4)] %>% as.data.frame()
+nameyears <- paste(years$V1, years$V2, sep="_")
+
+## Append names to all raster layers
+names(allrastersmod) <- nameyears
+
+## Sort rasters based on newly created names
+allrastersort <- allrastersmod[[order(nameyears)]]
+
+## Crop to augsburg boundary
 allrasteraug <- raster::crop(allrastersort, aug)
 
-# Calculate monthly means from each 9-day interval
+## Calculate monthly means from each 9-day interval
 rastlist <- list()
 
-# Loop and calculate means
+## Loop and calculate means
 for(j in seq(0, 229, 46)){
   for (i in 1:12){
 
@@ -46,27 +85,95 @@ for(j in seq(0, 229, 46)){
   }
 }
 
-# adjust names of layers
+## adjust names of layers
 names(rastlist) <- paste0(rep(2014:2018, each=12), ".", 1:12)
 
-# Stack layers together
+## Stack layers together
 meanrastlist <- stack(rastlist)
 
-# Dividing values by 10000 to have NDVI values between -1 and 1
+## Dividing values by 10000 to have NDVI values between -1 and 1
 gain(meanrastlist) <- 0.0001
 
+## Set dates for raster layers 
 meanrastlist <- setZ(meanrastlist, as.POSIXct(paste0(rep(2014:2018, each=12), "-", 1:12,"-", 1:31)), "Date")
-
-PhenologyRaster(meanrastlist[[1:12]], start = c(2014, 1), freq = 12)
 
 # plot(meanrastlist[[12]])
 # plot(a, cex=21)
 
+# # Get location of UKA in augsburg
 # a <- st_sfc(st_point(c(10.840414350002051, 48.384622412290014)), crs=4326)
 # atr <- st_transform(a, crs = st_crs("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"))
-#
+# 
+# # Buffer point
 # atr_poly <- st_buffer(atr, 1500)
 # ab <- as(atr_poly, 'Spatial')
-#
-# plot(rastlist[[1]])
+
+# # Visualize
+# plot(meanrastlist[[1]])
 # plot(ab, add=T)
+
+# # Crop all raster layers to the extent of buffered point
+# meanrastab <- stack(crop(meanrastlist, ab))
+
+## Calculate mean within each buffered point
+meanrastad <- list()
+
+## Loop over all layers and calculate mean ndvi values
+for (i in 1:length(names(meanrastlist))){
+  meanrastad[[i]] <- values(meanrastlist[[i]]) %>% mean(.,na.rm=T)
+} 
+
+## Applying phenoRaster on the mean values
+pheno_resuts <- PhenologyRaster(meanrastlist, start = c(2014, 1), freq = 12)
+
+# 4. Comparison between measured and predicted flowering phenology data
+
+# Convert to sf object for buffer
+betdataspaugsf <- st_as_sf(betdataspaug)
+betdataspaugbuf <- st_buffer(betdataspaugsf, dist=500) %>% sf::st_sf() 
+
+# Visualization
+plot(pheno_resuts$SOS.2014)
+plot(betdataspaugbuf, add=T)
+
+# betdataspaugsp <- as_Spatial(betdataspaugbuf)
+# Select columns
+selcol <- c("SOS.2014", "SOS.2015", "SOS.2016","SOS.2017","SOS.2018","EOS.2014","EOS.2015",  
+            "EOS.2016","EOS.2017","EOS.2018","LOS.2014","LOS.2015","LOS.2016","LOS.2017",   
+            "LOS.2018","PEAK.2014","PEAK.2015","PEAK.2016","PEAK.2017","PEAK.2018")
+
+# Calculate mean of parameters within buffer radius 
+meanbetflow <- raster::extract(pheno_resuts[[selcol]], betdataspaugbuf, fun=mean, na.rm=T)
+
+# Merge to existing data
+betdatamepre <- cbind(st_drop_geometry(betdataspaugsf), data.frame(meanbetflow))
+
+# Convert long data type
+meanbetflowlong <- data.frame(betdatamepre[,c("X", "Y", names(data.frame(meanbetflow)))]) %>% pivot_longer(.,cols=selcol,names_to = "name", values_to = "value")
+
+# Split column name 
+varyear <- do.call(rbind, strsplit(meanbetflowlong$name, split=".", fixed = T))
+meanbetflowsplt <- cbind(meanbetflowlong[,-3], varyear)
+
+# Make dataframe wider so that variables are along the column
+meanbetflowide <- pivot_wider(meanbetflowsplt, names_from = "1", values_fn = {mean})
+
+# Fix incorrect names 
+names(meanbetflowide)[3] <- "year"
+
+# Drop columns
+betdatamepre[, selcol] <- NULL
+
+
+betdatam <- merge(betdatamepre, meanbetflowide, by = c("X", "Y", "year"), all.x=T)
+
+betdatam[is.na(betdatam)]<- 0
+
+# betdatam[is.na(betdatam$flowering_start_date),"flowering_start_date"] <- 0
+# betdatam[is.na(betdatam$SOS),"SOS"]<- 0
+cor(betdatam$flowering_start_date, betdatam$SOS)
+
+# Variable selection and habitat modelling
+cm <- cor(betdatam[,c(25:35, 40:46)], use = "complete.obs")
+plotcorr(cm, col=ifelse(abs(cm) > 0.7, "red", "grey"))
+

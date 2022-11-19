@@ -3,6 +3,7 @@ library(sp)
 library(sf)
 library(raster)
 
+
 # Read NDVI raster with brick
 ndvirasterstack_L8 <- stack(paste0(getwd(),"/", list.files("ndviL8cropped", pattern='.tif$', all.files=TRUE, full.names=T)))
 ndvirasterstack_L7 <- stack(paste0(getwd(),"/", list.files("ndviL8cropped/L7", pattern='.tif$', all.files=TRUE, full.names=T)))
