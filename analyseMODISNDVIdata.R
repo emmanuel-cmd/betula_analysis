@@ -10,7 +10,7 @@ library(rgdal)
 library(raster)
 library(dplyr)
 library(magrittr)
-library(gstat)
+#library(gstat)
 library(tmap)
 library(spatstat)
 library(maptools)
@@ -19,6 +19,7 @@ library(caret)
 library(leaps)
 library(tidyr)
 library(ellipse)
+library(automap)
 
 # 1. Load augsburg boundary layer
 augsburg <- readOGR("shapefiles/augsburg/", "augsburg_boundary")
@@ -164,16 +165,48 @@ names(meanbetflowide)[3] <- "year"
 # Drop columns
 betdatamepre[, selcol] <- NULL
 
-
+# Merge to original dataframe
 betdatam <- merge(betdatamepre, meanbetflowide, by = c("X", "Y", "year"), all.x=T)
 
+# Replace NAs 
 betdatam[is.na(betdatam)]<- 0
 
-# betdatam[is.na(betdatam$flowering_start_date),"flowering_start_date"] <- 0
-# betdatam[is.na(betdatam$SOS),"SOS"]<- 0
-cor(betdatam$flowering_start_date, betdatam$SOS)
+# Pearson correlation between measured flowering start date and start of season
+cor(betdatam$flowering_end_date, betdatam$EOS)
 
 # Variable selection and habitat modelling
 cm <- cor(betdatam[,c(25:35, 40:46)], use = "complete.obs")
 plotcorr(cm, col=ifelse(abs(cm) > 0.7, "red", "grey"))
 
+# Linear regression model produces a model with satisfactory performance. 
+model <- lm(Flowering_duration ~ SOS + PEAK + Peak_date + LOS + flowering_start_date, betdatam)
+summary(model)
+
+# SPATIAL KRIGING WITH ENVIRONMENTAL VARIABLES
+betdatamcopy <- betdatam
+coordinates(betdatamcopy)=~X+Y
+
+# Set crs
+#proj4string(betdatamcopy) <- CRS("+init=epsg:4326")
+
+# Extract x and y range 
+x.range <- (range(betdatamcopy@coords[,1]))
+y.range <- (range(betdatamcopy@coords[,2]))
+
+# Expand grid
+A1.grd <- expand.grid(data.frame(betdatamcopy))
+coordinates(A1.grd) <- ~x+y
+gridded(A1.grd) <- TRUE
+
+# Set CRS of grid
+A1.grd@proj4string <- CRS("+init=epsg:4326")
+
+# 
+A1.grd$SOS <- pheno_resuts[["SOS.2014"]]
+PEAK <- pheno_resuts[["PEAK.2014"]]
+LOS <- pheno_resuts[["LOS.2014"]]
+
+automap::autoKrige(Flowering_duration ~ SOS + PEAK + LOS, A1.grd)
+A1.grd
+
+# https://gis.stackexchange.com/questions/239301/kriging-using-multiple-spatial-input-variables-and-one-spatial-output-response
