@@ -51,8 +51,8 @@ sub <- sp::over(betdatasp, aug)
 betdataspaug <- betdatasp[!is.na(sub$full_id), ]
 
 # 3. Load raster layers
-rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/", pattern='.tif$', all.files=TRUE, full.names=T)))
-rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/NDVI", pattern='.tif$', all.files=TRUE, full.names=T)))
+rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/", pattern='.tif$', all.files=TRUE, full.names=T)))
+rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/NDVI", pattern='.tif$', all.files=TRUE, full.names=T)))
 
 ## Stack raster together
 allrastersmod <- stack(rasmod1, rasmod2)
@@ -184,29 +184,46 @@ summary(model)
 
 # SPATIAL KRIGING WITH ENVIRONMENTAL VARIABLES
 betdatamcopy <- betdatam
+#betdatamcopy[betdatamcopy==0] <- NA
+betdatamcopy <- betdatamcopy[betdatamcopy$year==2015,]
+
 coordinates(betdatamcopy)=~X+Y
 
 # Set crs
 #proj4string(betdatamcopy) <- CRS("+init=epsg:4326")
 
 # Extract x and y range 
-x.range <- (range(betdatamcopy@coords[,1]))
-y.range <- (range(betdatamcopy@coords[,2]))
+x.range <- (range(betdataspaug@coords[,1]))
+y.range <- (range(betdataspaug@coords[,2]))
 
 # Expand grid
-A1.grd <- expand.grid(data.frame(betdatamcopy))
+A1.grd <- expand.grid(x=seq(from=x.range[1], to=x.range[2], by=0.5),  
+                      y=seq(from=y.range[1], to=y.range[2], by=0.5))
+
+# Append variables 
+# cols <- raster::extract(pheno_resuts, A1.grd) %>% as.data.frame()
+# 
+# A1.grd <- cbind(A1.grd, cols)
 coordinates(A1.grd) <- ~x+y
 gridded(A1.grd) <- TRUE
 
+# ---
+A1.grd$PEAK <- sample(betdatamcopy$PEAK, 400, replace = T)
+A1.grd$Peak_date <- sample(betdatamcopy$Peak_date, 400, replace = T)
+A1.grd$LOS <- sample(betdatamcopy$LOS, 400, replace = T)
+A1.grd$flowering_start_date <- sample(betdatamcopy$flowering_start_date, 400, replace = T)
+
+
 # Set CRS of grid
-A1.grd@proj4string <- CRS("+init=epsg:4326")
+A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
 
-# 
-A1.grd$SOS <- pheno_resuts[["SOS.2014"]]
-PEAK <- pheno_resuts[["PEAK.2014"]]
-LOS <- pheno_resuts[["LOS.2014"]]
+# PEAK <- pheno_resuts[["PEAK.2014"]]
+# LOS <- pheno_resuts[["LOS.2014"]]
 
-automap::autoKrige(Flowering_duration ~ SOS + PEAK + LOS, A1.grd)
-A1.grd
+betdatamcopy@proj4string <-  CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
 
+krigres <- automap::autoKrige(Flowering_duration ~ PEAK + Peak_date + LOS + flowering_start_date, betdatamcopy, A1.grd)
+
+output <- raster(krigres$krige_output)
+plot(output)
 # https://gis.stackexchange.com/questions/239301/kriging-using-multiple-spatial-input-variables-and-one-spatial-output-response
