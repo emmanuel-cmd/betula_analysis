@@ -44,12 +44,12 @@ betdatasp <- SpatialPointsDataFrame(betdata[,c("UTM_X", "UTM_Y")], data = betdat
 betdatasp <- spTransform(betdatasp, CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"))
 
 # Get only locations within augsburg
-sub <- sp::over(betdatasp, aug)
-betdataspaug <- betdatasp[!is.na(sub$full_id), ]
+# sub <- sp::over(betdatasp, aug)
+# betdataspaug <- betdatasp[!is.na(sub$full_id), ]
 
 # 3. Load raster layers
-rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/", pattern='.tif$', all.files=TRUE, full.names=T)))
-rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/NDVI/", pattern='.tif$', all.files=TRUE, full.names=T)))
+rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/", pattern='.tif$', all.files=TRUE, full.names=T)))
+rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/NDVI/", pattern='.tif$', all.files=TRUE, full.names=T)))
 
 ## Stack raster together
 allrastersmod <- stack(rasmod1, rasmod2)
@@ -197,17 +197,6 @@ y.range <- c(5366066.9, 5388362.6)
 A1.grd <- expand.grid(x=seq(from=x.range[1], to=x.range[2], by=5),
                       y=seq(from=y.range[1], to=y.range[2], by=5))
 
-# Append variables
-# cols <- raster::extract(pheno_resuts, A1.grd) %>% as.data.frame()
-# 
-# A1.grd <- cbind(A1.grd, cols)
-
-# Create sample raster for the generation of sample points
-raug <- mask(meanrastlist$X2014.1, aug)
-raug <- disaggregate(raug, fac=25)
-
-# Generate sample points 
-A1 <- dismo::randomPoints(raug, p = A1.grd, 500) #%>% as.data.frame
 coordinates(A1.grd) <- ~x+y
 
 # Set CRS of grid
@@ -216,29 +205,34 @@ A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +uni
 #coordinates(A1.grd) <- ~x+y
 gridded(A1.grd) <- TRUE
 
-
-
 # plot(aug)
 # plot(A1.grd, add=T)
+
 # ---
-A1.grd$PEAK <- sample(betdatamcopy$PEAK, nrow(A1.grd@coords), replace = T)
-A1.grd$Peak_date <- sample(betdatamcopy$Peak_date, nrow(A1.grd@coords), replace = T)
-A1.grd$LOS <- sample(betdatamcopy$LOS, nrow(A1.grd@coords), replace = T)
-A1.grd$flowering_start_date <- sample(betdatamcopy$flowering_start_date, nrow(A1.grd@coords), replace = T)
-
-
+A1.grd$PEAK <- mean(betdatamcopy$PEAK, na.rm=T)#sample(betdatamcopy$PEAK, nrow(A1.grd@coords), replace = T)
+A1.grd$Peak_date <- mean(betdatamcopy$Peak_date, na.rm=T)#sample(betdatamcopy$Peak_date, nrow(A1.grd@coords), replace = T)
+A1.grd$LOS <- mean(betdatamcopy$LOS, na.rm=T)#sample(betdatamcopy$LOS, nrow(A1.grd@coords), replace = T)
+A1.grd$flowering_start_date <- mean(betdatamcopy$flowering_start_date, na.rm=T)#sample(betdatamcopy$flowering_start_date, nrow(A1.grd@coords), replace = T)
 
 # PEAK <- pheno_resuts[["PEAK.2014"]]
 # LOS <- pheno_resuts[["LOS.2014"]]
 
-betdatamcopy@proj4string <-  CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
+# Change object resolution
+betdatamcopy@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
 
+# Universal kriging --
 krigres <- automap::autoKrige(Flowering_duration ~ PEAK + Peak_date + LOS + flowering_start_date, betdatamcopy, A1.grd)
 
+# Kriged output
 output <- raster(krigres$krige_output)
 plot(output)
 plot(aug, add=T)
 
+# Mask output to augsburg extent
 outaug <- mask(output, aug)
 plot(outaug)
+
+# 
+writeRaster(outaug, "predicted_flowering_duration01.tif")
 # https://gis.stackexchange.com/questions/239301/kriging-using-multiple-spatial-input-variables-and-one-spatial-output-response
+
