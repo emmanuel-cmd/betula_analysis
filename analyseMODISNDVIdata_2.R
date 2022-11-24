@@ -17,6 +17,8 @@ library(leaps)
 library(tidyr)
 library(ellipse)
 library(automap)
+library(stars)
+library(terra)
 
 # 1. Load augsburg boundary layer
 augsburg <- readOGR("shapefiles/augsburg/", "augsburg_boundary")
@@ -177,14 +179,38 @@ proj4string(betdatamcopy) <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.1
 ext <- extent(betdatasp) %>% as.vector(.)
 
 # Expand grid
-A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=5),
-                      y=seq(from=ext[3], to=ext[4], by=5))
+A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=10),
+                      y=seq(from=ext[3], to=ext[4], by=10))
+# Extract raster 
+mat <- raster::extract(pheno_resuts[[which(str_detect(selcol,"2015"))]], A1.grd)
+
+# Merge to A1.grd
+A1.grd <- cbind(A1.grd, mat)
 
 # Convert to spatial object
 coordinates(A1.grd) <- ~x+y
+gridded(A1.grd) <- TRUE
 
 # Set CRS of grid
 A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
-gridded(A1.grd) <- TRUE
 
-#
+# Convert to stars object
+A1grdstars <- st_as_stars(A1.grd)
+
+# Convert nas to 0
+A1grdstars[is.na(A1grdstars)] <- 0
+
+# GEOSPATIAL KRIGING
+# create sample variogram
+flower.v <- gstat::variogram(Flowering_duration ~ 1, betdatamcopy)
+
+# fit variogram model
+# plot(variogram(Flowering_duration ~ 1, betdatamcopy))
+flower.vfit <- gstat::fit.variogram(flower.v, vgm(0.6, "Sph", 800, 0.1))
+
+# ordinary kriging
+lz.ok <- gstat::krige(formula=Flowering_duration ~ 1, locations = betdatamcopy, newdata=A1grdstars, model=flower.vfit)
+
+# Plot
+plot(rast(lz.ok['var1.pred']))
+plot(betdatamcopy["Flowering_duration"], col="blue", cex=0.5, type="p", add=T)
