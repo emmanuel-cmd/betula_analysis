@@ -53,6 +53,10 @@ betdatasp <- spTransform(betdatasp, CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=63
 rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/", pattern='.tif$', all.files=TRUE, full.names=T)))
 rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/germany/VI_16Days_250m_v6/NDVI/", pattern='.tif$', all.files=TRUE, full.names=T)))
 
+# # 3. Load raster layers
+# rasmod1 <- stack(paste0(getwd(),"/", list.files("VegetationData/", pattern='.tif$', all.files=TRUE, full.names=T)))
+# rasmod2 <- stack(paste0(getwd(),"/", list.files("VegetationData/NDVI/", pattern='.tif$', all.files=TRUE, full.names=T)))
+
 ## Stack raster together
 allrastersmod <- stack(rasmod1, rasmod2)
 
@@ -151,7 +155,7 @@ betdatamepre[, selcol] <- NULL
 betdatam <- merge(betdatamepre, meanbetflowide, by = c("X", "Y", "year"), all.x=T)
 
 # Replace NAs 
-betdatam[is.na(betdatam)]<- 0
+#betdatam[is.na(betdatam)]<- 0
 
 # Pearson correlation between measured flowering start date and start of season
 cor(betdatam$flowering_end_date, betdatam$EOS)
@@ -161,13 +165,13 @@ cm <- cor(betdatam[,c(25:35, 40:46)], use = "complete.obs")
 plotcorr(cm, col=ifelse(abs(cm) > 0.7, "red", "grey"))
 
 # Linear regression model produces a model with satisfactory performance. 
-model <- lm(Flowering_duration ~ SOS + PEAK + Peak_date + LOS + flowering_start_date, betdatam)
+model <- lm(log(Flowering_duration) ~ SOS + PEAK + LOS + EOS, betdatam)
 summary(model)
 
 # SPATIAL KRIGING WITH ENVIRONMENTAL VARIABLES
 betdatamcopy <- betdatam
 #betdatamcopy[betdatamcopy==0] <- NA
-betdatamcopy <- betdatamcopy[betdatamcopy$year==2015,]
+#betdatamcopy <- betdatamcopy[betdatamcopy$year==2015,]
 
 # Convert to spatial object
 coordinates(betdatamcopy)=~X+Y
@@ -179,8 +183,8 @@ proj4string(betdatamcopy) <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.1
 ext <- extent(betdatasp) %>% as.vector(.)
 
 # Expand grid
-A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=10),
-                      y=seq(from=ext[3], to=ext[4], by=10))
+A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=50),
+                      y=seq(from=ext[3], to=ext[4], by=50))
 # Extract raster 
 mat <- raster::extract(pheno_resuts[[which(str_detect(selcol,"2015"))]], A1.grd)
 
@@ -195,22 +199,26 @@ gridded(A1.grd) <- TRUE
 A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
 
 # Convert to stars object
-A1grdstars <- st_as_stars(A1.grd)
+A1grdstars <- stars::st_as_stars(A1.grd)
 
 # Convert nas to 0
-A1grdstars[is.na(A1grdstars)] <- 0
+#A1grdstars[is.na(A1grdstars)] <- 0
+
+samplebet <- betdatamcopy[!is.na(betdatamcopy@data$NO2),]
 
 # GEOSPATIAL KRIGING
 # create sample variogram
-flower.v <- gstat::variogram(Flowering_duration ~ 1, betdatamcopy)
+#betdatamcopy@data[is.na(betdatamcopy@data)] <- 0
+flower.v <- gstat::variogram(log(NO2) ~ 1, samplebet)
 
 # fit variogram model
 # plot(variogram(Flowering_duration ~ 1, betdatamcopy))
-flower.vfit <- gstat::fit.variogram(flower.v, vgm(0.6, "Sph", 800, 0.1))
+flower.vfit <- gstat::fit.variogram(flower.v, vgm(0.032, "Sph", 0.09, 0.03))
+plot(flower.v, flower.vfit)
 
 # ordinary kriging
-lz.ok <- gstat::krige(formula=Flowering_duration ~ 1, locations = betdatamcopy, newdata=A1grdstars, model=flower.vfit)
+lz.ok <- gstat::krige(formula=log(NO2) ~ 1, locations = samplebet, newdata=A1grdstars, model=flower.vfit)
 
 # Plot
-plot(rast(lz.ok['var1.pred']))
+plot(terra::rast(lz.ok['var1.pred']))
 plot(betdatamcopy["Flowering_duration"], col="blue", cex=0.5, type="p", add=T)
