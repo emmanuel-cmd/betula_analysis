@@ -201,6 +201,9 @@ A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +uni
 # Convert to stars object
 A1grdstars <- stars::st_as_stars(A1.grd)
 
+meuse_gridcv <- split(A1grdstars, "band")
+meuse_gridcv
+
 # Convert nas to 0
 #A1grdstars[is.na(A1grdstars)] <- 0
 
@@ -209,16 +212,24 @@ samplebet <- betdatamcopy[!is.na(betdatamcopy@data$NO2),]
 # GEOSPATIAL KRIGING
 # create sample variogram
 #betdatamcopy@data[is.na(betdatamcopy@data)] <- 0
-flower.v <- gstat::variogram(log(NO2) ~ 1, samplebet)
+flower.v <- gstat::variogram(sqrt(sqrt(NO2)) ~ 1, samplebet)
 
 # fit variogram model
 # plot(variogram(Flowering_duration ~ 1, betdatamcopy))
-flower.vfit <- gstat::fit.variogram(flower.v, vgm(0.032, "Sph", 0.09, 0.03))
+flower.vfit <- gstat::fit.variogram(flower.v, vgm(psill=1.2, "Per", range=0.05, nugget=0.0005))
 plot(flower.v, flower.vfit)
 
-# ordinary kriging
-lz.ok <- gstat::krige(formula=log(NO2) ~ 1, locations = samplebet, newdata=A1grdstars, model=flower.vfit)
+#ordinary kriging
+lz.ok <- gstat::krige(formula=NO2 ~ 1, locations = samplebet, newdata=A1grdstars, model=flower.vfit)
 
 # Plot
-plot(terra::rast(lz.ok['var1.pred']))
-plot(betdatamcopy["Flowering_duration"], col="blue", cex=0.5, type="p", add=T)
+
+a <- raster::mask(raster(terra::rast(lz.ok['var1.var'])), aug)
+plot(a)
+
+plot(terra::rast(lz.ok['var1.var']))
+plot(samplebet["NO2"], col="blue", cex=0.5, type="p", add=T)
+
+
+# IDW Interpolation
+betidw <- gstat::idw(NO2 ~ 1, locations=samplebet, newdata=A1grdstars, idp = 2)
