@@ -183,8 +183,8 @@ proj4string(betdatamcopy) <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.1
 ext <- extent(betdatasp) %>% as.vector(.)
 
 # Expand grid
-A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=50),
-                      y=seq(from=ext[3], to=ext[4], by=50))
+A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=10),
+                      y=seq(from=ext[3], to=ext[4], by=10))
 # Extract raster 
 mat <- raster::extract(pheno_resuts[[which(str_detect(selcol,"2015"))]], A1.grd)
 
@@ -201,8 +201,8 @@ A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +uni
 # Convert to stars object
 A1grdstars <- stars::st_as_stars(A1.grd)
 
-meuse_gridcv <- split(A1grdstars, "band")
-meuse_gridcv
+# meuse_gridcv <- split(A1grdstars, "band")
+# meuse_gridcv
 
 # Convert nas to 0
 #A1grdstars[is.na(A1grdstars)] <- 0
@@ -216,7 +216,7 @@ flower.v <- gstat::variogram(sqrt(sqrt(NO2)) ~ 1, samplebet)
 
 # fit variogram model
 # plot(variogram(Flowering_duration ~ 1, betdatamcopy))
-flower.vfit <- gstat::fit.variogram(flower.v, vgm(psill=1.2, "Per", range=0.05, nugget=0.0005))
+flower.vfit <- gstat::fit.variogram(flower.v, vgm(psill=0.02, "Lin", range=0.05, nugget=0.0005))
 plot(flower.v, flower.vfit)
 
 #ordinary kriging
@@ -232,4 +232,13 @@ plot(samplebet["NO2"], col="blue", cex=0.5, type="p", add=T)
 
 
 # IDW Interpolation
-betidw <- gstat::idw(NO2 ~ 1, locations=samplebet, newdata=A1grdstars, idp = 2)
+betidw <- gstat::idw(NO2 ~ 1, locations=samplebet, newdata=A1grdstars, idp = 2, na.action = na.omit)
+
+plot(terra::rast(betidw["var1.pred"]))
+plot(aug, add=T)
+
+# Get raster and mask to augsburg extent 
+idwras <- raster(terra::rast(betidw["var1.pred"]))
+idwrasaug <- raster::mask(idwras, aug)
+
+plot(idwrasaug)
