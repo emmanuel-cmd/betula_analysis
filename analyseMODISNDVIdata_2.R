@@ -170,17 +170,19 @@ summary(model)
 
 # SPATIAL KRIGING WITH ENVIRONMENTAL VARIABLES
 betdatamcopy <- betdatam
-#betdatamcopy[betdatamcopy==0] <- NA
-#betdatamcopy <- betdatamcopy[betdatamcopy$year==2015,]
+betdatamcopy <- betdatamcopy[betdatamcopy$year==2015,]
+
+# Create a new data with no NA in NO2
+samplebet <- betdatamcopy[!is.na(betdatamcopy$NO2),]
 
 # Convert to spatial object
-coordinates(betdatamcopy)=~X+Y
+samplebetsp <- SpatialPointsDataFrame(samplebet[, c("UTM_X", "UTM_Y")], data = samplebet, proj4string = CRS("+proj=utm +zone=32 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs"))
 
 # Set crs
-proj4string(betdatamcopy) <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
+samplebetsp <- spTransform(samplebetsp, CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs"))
 
 # Get extent of point
-ext <- extent(betdatasp) %>% as.vector(.)
+ext <- extent(samplebetsp) %>% as.vector(.)
 
 # Expand grid
 A1.grd <- expand.grid(x=seq(from=ext[1], to=ext[2], by=10),
@@ -201,44 +203,31 @@ A1.grd@proj4string <- CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +uni
 # Convert to stars object
 A1grdstars <- stars::st_as_stars(A1.grd)
 
-# meuse_gridcv <- split(A1grdstars, "band")
-# meuse_gridcv
-
-# Convert nas to 0
-#A1grdstars[is.na(A1grdstars)] <- 0
-
-samplebet <- betdatamcopy[!is.na(betdatamcopy@data$NO2),]
-
 # GEOSPATIAL KRIGING
 # create sample variogram
-#betdatamcopy@data[is.na(betdatamcopy@data)] <- 0
-flower.v <- gstat::variogram(sqrt(sqrt(NO2)) ~ 1, samplebet)
+flower.v <- gstat::variogram(NO2 ~ 1, data = samplebetsp)
 
 # fit variogram model
-# plot(variogram(Flowering_duration ~ 1, betdatamcopy))
-flower.vfit <- gstat::fit.variogram(flower.v, vgm(psill=0.02, "Lin", range=0.05, nugget=0.0005))
+flower.vfit <- gstat::fit.variogram(flower.v, vgm("Lin"))
 plot(flower.v, flower.vfit)
 
 #ordinary kriging
-lz.ok <- gstat::krige(formula=NO2 ~ 1, locations = samplebet, newdata=A1grdstars, model=flower.vfit)
+lz.ok <- gstat::krige(formula=NO2 ~ 1, locations = samplebetsp, newdata=A1grdstars, model=flower.vfit)
+
+# Get predicted raster layer
+no2_15 <- terra::rast(lz.ok['var1.pred'])
+
+# Fill Na values
+no2_15 <- focal(no2_15, w=47, fun=mean, na.policy="only", na.rm=T)
 
 # Plot
-
-a <- raster::mask(raster(terra::rast(lz.ok['var1.var'])), aug)
-plot(a)
-
-plot(terra::rast(lz.ok['var1.var']))
-plot(samplebet["NO2"], col="blue", cex=0.5, type="p", add=T)
-
-
-# IDW Interpolation
-betidw <- gstat::idw(NO2 ~ 1, locations=samplebet, newdata=A1grdstars, idp = 2, na.action = na.omit)
-
-plot(terra::rast(betidw["var1.pred"]))
+plot(no2_15)
 plot(aug, add=T)
+plot(samplebetsp["NO2"], col="blue", cex=0.5, type="p", add = T)
 
-# Get raster and mask to augsburg extent 
-idwras <- raster(terra::rast(betidw["var1.pred"]))
-idwrasaug <- raster::mask(idwras, aug)
+# Mask to augsburg extent 
+no2_15aug <- raster::mask(raster(no2_15), aug)
 
-plot(idwrasaug)
+# 
+plot(no2_15aug)
+
