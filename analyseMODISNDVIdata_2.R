@@ -154,9 +154,6 @@ betdatamepre[, selcol] <- NULL
 # Merge to original dataframe
 betdatam <- merge(betdatamepre, meanbetflowide, by = c("X", "Y", "year"), all.x=T)
 
-# Replace NAs 
-#betdatam[is.na(betdatam)]<- 0
-
 # Pearson correlation between measured flowering start date and start of season
 cor(betdatam$flowering_end_date, betdatam$EOS)
 
@@ -170,7 +167,7 @@ summary(model)
 
 # SPATIAL KRIGING WITH ENVIRONMENTAL VARIABLES
 betdatamcopy <- betdatam
-betdatamcopy <- betdatamcopy[betdatamcopy$year==2015,]
+betdatamcopy <- betdatamcopy[betdatamcopy$year==2014,]
 
 # Create a new data with no NA in NO2
 samplebet <- betdatamcopy[!is.na(betdatamcopy$NO2),]
@@ -208,7 +205,7 @@ A1grdstars <- stars::st_as_stars(A1.grd)
 flower.v <- gstat::variogram(NO2 ~ 1, data = samplebetsp)
 
 # fit variogram model
-flower.vfit <- gstat::fit.variogram(flower.v, vgm("Lin"))
+flower.vfit <- gstat::fit.variogram(flower.v, vgm("Sph"))
 plot(flower.v, flower.vfit)
 
 #ordinary kriging
@@ -228,6 +225,7 @@ plot(samplebetsp["NO2"], col="blue", cex=0.5, type="p", add = T)
 # Mask to augsburg extent 
 no2_15aug <- raster::mask(raster(no2_15), aug)
 
-# 
+# View raster on map 
+mapview::mapview(no2_15aug)
 plot(no2_15aug)
-
+writeRaster(no2_15aug, "interpolatedNO2aug2014.tif")
